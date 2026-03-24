@@ -72,6 +72,21 @@ def _chromium_launch_args() -> list[str]:
     return [a for a in raw.split() if a]
 
 
+def _launch_args() -> list[str] | None:
+    """Extra Chromium flags; Vercel/Linux serverless needs no-sandbox style args."""
+    extra = _chromium_launch_args()
+    if os.environ.get("VERCEL"):
+        base = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-software-rasterizer",
+        ]
+        return base + extra
+    return extra if extra else None
+
+
 def _headless() -> bool:
     return os.environ.get("BKASH_HEADLESS", "true").lower() in ("1", "true", "yes")
 
@@ -140,10 +155,10 @@ async def create_browser() -> tuple[Playwright, Browser]:
     from playwright.async_api import async_playwright
 
     pw = await async_playwright().start()
-    args = _chromium_launch_args()
+    args = _launch_args()
     browser = await pw.chromium.launch(
         headless=_headless(),
-        args=args if args else None,
+        args=args,
     )
     return pw, browser
 

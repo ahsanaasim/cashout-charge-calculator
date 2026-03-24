@@ -1,0 +1,6 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "env": {
+    "PLAYWRIGHT_BROWSERS_PATH": "0"
+  }
+}

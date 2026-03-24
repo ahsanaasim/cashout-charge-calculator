@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from decimal import Decimal
 
@@ -10,6 +11,12 @@ from app import bkash
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Vercel runs one invocation per request (fluid compute can reuse, but no reliable
+    # long-lived browser). Launching Chromium at startup often crashes without a bundled
+    # browser + breaks cold starts; we open/close per request when VERCEL is set.
+    if os.environ.get("VERCEL"):
+        yield
+        return
     pw, browser = await bkash.create_browser()
     app.state.playwright = pw
     app.state.browser = browser
@@ -25,7 +32,8 @@ app = FastAPI(
     lifespan=lifespan,
     description=(
         "Uses Playwright (Chromium) against the official bKash calculator. "
-        "After `pip install -r requirements.txt`, run: `playwright install chromium`."
+        "Locally: `pip install -r requirements.txt` then `playwright install chromium`. "
+        "On Vercel, Chromium is installed during the Vercel build (`vercel_build.py`)."
     ),
 )
 
@@ -58,17 +66,27 @@ def health() -> dict[str, str]:
 
 @app.post("/cashout-charge", response_model=CashoutChargeResponse)
 async def cashout_charge(request: Request, body: CashoutChargeRequest) -> CashoutChargeResponse:
-    browser: Browser | None = getattr(request.app.state, "browser", None)
-    if browser is None:
-        raise HTTPException(status_code=503, detail="Browser is not ready yet.")
-
     name = (body.service_name or bkash.DEFAULT_SERVICE_NAME).strip()
-    try:
-        amount, service_name, charge = await bkash.fetch_cashout_charge(
+
+    async def _run(browser: Browser) -> tuple[str, str, str]:
+        return await bkash.fetch_cashout_charge(
             browser,
             body.amount,
             service_name=name,
         )
+
+    try:
+        if os.environ.get("VERCEL"):
+            pw, browser = await bkash.create_browser()
+            try:
+                amount, service_name, charge = await _run(browser)
+            finally:
+                await bkash.dispose_browser(pw, browser)
+        else:
+            browser = getattr(request.app.state, "browser", None)
+            if browser is None:
+                raise HTTPException(status_code=503, detail="Browser is not ready yet.")
+            amount, service_name, charge = await _run(browser)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     except bkash.BkashBlockedError as e:

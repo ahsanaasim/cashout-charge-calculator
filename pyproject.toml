@@ -1,0 +1,8 @@
+[project]
+name = "cashout-charge-calculator"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.vercel.scripts]
+# Runs after pip install; bundles Chromium next to Playwright (PLAYWRIGHT_BROWSERS_PATH=0).
+build = "python vercel_build.py"
