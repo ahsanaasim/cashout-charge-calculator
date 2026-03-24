@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 from playwright.async_api import (
     Browser,
@@ -153,6 +154,14 @@ async def fetch_cashout_charge(
 async def create_browser() -> tuple[Playwright, Browser]:
     """Start Playwright and Chromium; caller must dispose both on shutdown."""
     from playwright.async_api import async_playwright
+
+    # Vercel vendors deps under _vendor; browsers installed next to the driver are often
+    # missing from the final bundle. Install into ./playwright-browsers at build time
+    # and point Playwright there at runtime (see vercel_build.py).
+    if os.environ.get("VERCEL"):
+        bundle = Path(__file__).resolve().parent.parent / "playwright-browsers"
+        if bundle.is_dir():
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(bundle)
 
     pw = await async_playwright().start()
     args = _launch_args()

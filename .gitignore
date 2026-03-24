@@ -8,3 +8,6 @@ __pycache__/
 .ruff_cache/
 .env
 .DS_Store
+
+# Populated by vercel_build.py / CI (Playwright binaries; deployed from build output)
+playwright-browsers/

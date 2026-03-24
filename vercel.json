@@ -1,7 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "pip install -r requirements.txt && PLAYWRIGHT_BROWSERS_PATH=0 python vercel_build.py",
-  "env": {
-    "PLAYWRIGHT_BROWSERS_PATH": "0"
-  }
+  "installCommand": "pip install -r requirements.txt && python vercel_build.py"
 }
