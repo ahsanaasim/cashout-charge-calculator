@@ -40,6 +40,10 @@ class BkashTimeoutError(BkashError):
     """Page or UI step took too long."""
 
 
+class BkashConfigError(BkashError):
+    """Missing or invalid deployment configuration (e.g. remote browser URL)."""
+
+
 def validate_amount(amount: str) -> str:
     try:
         d = Decimal(amount.strip())
@@ -74,9 +78,9 @@ def _chromium_launch_args() -> list[str]:
 
 
 def _launch_args() -> list[str] | None:
-    """Extra Chromium flags; Vercel/Linux serverless needs no-sandbox style args."""
+    """Extra Chromium flags for Linux / CI (local ``chromium.launch`` only)."""
     extra = _chromium_launch_args()
-    if os.environ.get("VERCEL"):
+    if os.environ.get("PLAYWRIGHT_LINUX_LAUNCH_ARGS", "").lower() in ("1", "true", "yes"):
         base = [
             "--no-sandbox",
             "--disable-setuid-sandbox",
@@ -86,6 +90,11 @@ def _launch_args() -> list[str] | None:
         ]
         return base + extra
     return extra if extra else None
+
+
+def _vercel_production_or_preview() -> bool:
+    env = (os.environ.get("VERCEL_ENV") or "").lower()
+    return bool(os.environ.get("VERCEL")) and env in ("production", "preview")
 
 
 def _headless() -> bool:
@@ -152,22 +161,37 @@ async def fetch_cashout_charge(
 
 
 async def create_browser() -> tuple[Playwright, Browser]:
-    """Start Playwright and Chromium; caller must dispose both on shutdown."""
+    """
+    Connect to a remote Chromium (``PLAYWRIGHT_WS_ENDPOINT``) or launch a local binary.
+
+    Vercel production/preview bundles cannot include Chromium (~245MB Lambda cap). Use a
+    hosted Playwright endpoint (Browserless, Browserbase, etc.) and set
+    ``PLAYWRIGHT_WS_ENDPOINT`` to its ``wss://...`` URL.
+    """
     from playwright.async_api import async_playwright
 
-    # Vercel vendors deps under _vendor; browsers installed next to the driver are often
-    # missing from the final bundle. Install into ./playwright-browsers at build time
-    # and point Playwright there at runtime (see vercel_build.py).
-    if os.environ.get("VERCEL"):
-        bundle = Path(__file__).resolve().parent.parent / "playwright-browsers"
-        if bundle.is_dir():
-            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(bundle)
+    ws = (os.environ.get("PLAYWRIGHT_WS_ENDPOINT") or "").strip()
+    if _vercel_production_or_preview() and not ws:
+        raise BkashConfigError(
+            "Vercel serverless has a ~245MB bundle limit; Playwright plus Chromium "
+            "does not fit. Set the environment variable PLAYWRIGHT_WS_ENDPOINT to a "
+            "hosted Chromium WebSocket URL (for example from Browserless or Browserbase). "
+            "Locally, run `playwright install chromium` and omit PLAYWRIGHT_WS_ENDPOINT, "
+            "or use `vercel dev` (VERCEL_ENV=development) without a remote browser."
+        )
 
     pw = await async_playwright().start()
-    args = _launch_args()
+    if ws:
+        browser = await pw.chromium.connect(ws, timeout=120_000)
+        return pw, browser
+
+    bundle = Path(__file__).resolve().parent.parent / "playwright-browsers"
+    if bundle.is_dir():
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(bundle)
+
     browser = await pw.chromium.launch(
         headless=_headless(),
-        args=args,
+        args=_launch_args(),
     )
     return pw, browser
 

@@ -33,7 +33,9 @@ app = FastAPI(
     description=(
         "Uses Playwright (Chromium) against the official bKash calculator. "
         "Locally: `pip install -r requirements.txt` then `playwright install chromium`. "
-        "On Vercel, Chromium is installed during the Vercel build (`vercel_build.py`)."
+        "On Vercel production/preview, set **PLAYWRIGHT_WS_ENDPOINT** to a hosted "
+        "Chromium WebSocket URL (Browserless, Browserbase, etc.); bundled Chromium "
+        "exceeds the platform size limit."
     ),
 )
 
@@ -95,6 +97,8 @@ async def cashout_charge(request: Request, body: CashoutChargeRequest) -> Cashou
         raise HTTPException(status_code=502, detail=str(e)) from e
     except bkash.BkashTimeoutError as e:
         raise HTTPException(status_code=504, detail=str(e)) from e
+    except bkash.BkashConfigError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except bkash.BkashError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 

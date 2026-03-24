@@ -9,5 +9,5 @@ __pycache__/
 .env
 .DS_Store
 
-# Populated by vercel_build.py / CI (Playwright binaries; deployed from build output)
+# Optional local Playwright cache path (see app/bkash.py)
 playwright-browsers/
